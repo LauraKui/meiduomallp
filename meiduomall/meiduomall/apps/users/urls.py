@@ -35,5 +35,10 @@ urlpatterns = [
     # 用户浏览记录
     url(r'^browse_histories/$', views.HistoryView.as_view(), name='history'),
     url(r'^orders/info/(?P<page_num>\d+)/$', views.UserOrderInfoView.as_view(), name='orderinfo'),
+    url(r'^find_password/$', views.FindPassd.as_view(), name='find_password'), # 找回密码之回到界面
+    url(r'^accounts/(?P<username>[a-zA-Z0-9_-]{5,20})/sms/token/$', views.AccountUser.as_view(), name='accountuser'), # 找回密码之用户名
+    url(r'^sms_codes/$', views.VerifyUser.as_view(), name='verifyuser'), # 找回密码之验证身份
+    url(r'^accounts/(?P<username>[a-zA-Z0-9_-]{5,20})/password/token/$', views.VerifySms.as_view(), name='checksms'), # 找回密码之修改
+    url(r'^users/(?P<user_id>\d+)/password/$', views.ChangePassword.as_view(), name='change_password'), # 找回密码之修改
 
         ]

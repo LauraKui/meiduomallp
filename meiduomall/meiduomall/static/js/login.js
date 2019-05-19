@@ -9,7 +9,7 @@ var vm = new Vue({
         error_pwd: false,
         username: '',
         password: '',
-        remembered: false
+        remembered: false,
     },
     methods: {
         // 检查账号
@@ -53,7 +53,22 @@ var vm = new Vue({
                 .catch(error => {
                     console.log(error.response);
                 })
-        }
+        },
+        // 微博登录
+        sina_login: function(){
+            var next = get_query_string('next') || '/';
+            var url = this.host + '/oauth2/authorization/?next=' + next;
+            axios.get(url, {
+                    responseType: 'json'
+                })
+                .then(response => {
+                    location.href = response.data.authorize_url;
+                })
+                .catch(error => {
+                    console.log(error.response);
+                })
+        },
+
     }
 });
 

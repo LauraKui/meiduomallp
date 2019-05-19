@@ -53,6 +53,6 @@ class SmsCodeView(View):
         pl.setex('get_flag: %s' % mobile, constants.SMS_CODE_REDIS_EXPIRY // 5, 1)
         pl.execute()
 
-        ccp_send_sms_code(mobile, sms_code)
+        ccp_send_sms_code.delay(mobile, sms_code)
 
         return JsonResponse({'code': RETCODE.OK, 'errmsg': '短信发送成功'})

@@ -1,7 +1,7 @@
 from celery import Celery
 import os
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "meiduo_mall.settings.dev")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "meiduomall.settings.dev")
 
 celery_app = Celery('meiduo')
 

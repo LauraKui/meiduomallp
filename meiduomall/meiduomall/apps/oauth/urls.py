@@ -17,9 +17,11 @@ Including another URLconf
 """
 from django.conf.urls import url, include
 from django.contrib import admin
-from .views import OauthQQ, OauthCallBack
+from .views import OauthQQ, OauthCallBack, OauthSinaUser, SinaBack
 urlpatterns = [
     url(r'^qq/authorization/$', OauthQQ.as_view(), name='qq'),
     url(r'^oauth_callback/$', OauthCallBack.as_view(), name='callback'),
+    url(r'^oauth2/authorization/$', OauthSinaUser.as_view(), name='sina'),
+    url(r'^oauth/sina/user/$', SinaBack.as_view(), name='sinaback'),
 
 ]

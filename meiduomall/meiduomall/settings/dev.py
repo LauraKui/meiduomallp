@@ -292,3 +292,8 @@ DATABASE_ROUTERS = ['meiduomall.utils.db_router.MasterSlaveDBRouter']
 
 # 配置收集静态文件存放的目录
 STATIC_ROOT = os.path.join(os.path.dirname(BASE_DIR), 'static')
+
+# 新浪微博
+SINA_CLIENT_ID = '2909755640'
+SINA_CLIENT_SECRET = 'eb2192950073abf631b6c48e98f0bdf1'
+SINA_REDIRECT_URI = 'http://www.meiduo.site:8000/oauth/sina/user'

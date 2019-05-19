@@ -8,7 +8,7 @@ from django_redis import get_redis_connection
 from django.db import DatabaseError
 from django.core.mail import send_mail
 from django.core.paginator import Paginator
-import re
+import re, random
 import logging
 import json
 
@@ -22,6 +22,9 @@ from .models import Address
 from goods.models import SKU
 from carts.utils import merge_cookie_cart_to_redis
 from orders.models import OrderInfo, OrderGoods
+from celery_tasks.sms.tasks import ccp_send_sms_code
+from verifications.views import SmsCodeView
+from verifications import constants
 
 # Create your views here.
 
@@ -478,6 +481,7 @@ class HistoryView(View):  # 不mixins的原因：
 
 
 class UserOrderInfoView(LoginRequiredView):
+    """用户所有订单查看"""
     def get(self, request, page_num):
         user = request.user
         # 查询当前登录用户的所有订单
@@ -518,4 +522,123 @@ class UserOrderInfoView(LoginRequiredView):
         # return render_to_response( 'user_center_order.html', context)
 
 
+class FindPassd(View):
+    """找回密码视图一"""
+    def get(self, request):
+        """显示界面"""
+        return render(request, 'find_password.html')
 
+
+class AccountUser(View):
+    """找回密码视图二"""
+    def get(self, request, username):
+        """输入用户名信息"""
+        # http: // www.meiduo.site: 8000 / accounts / python / sms / token /?text = fkhs & image_code_id = 89f99980 - a935 - 48 ea - b05a - 99456448f413
+        #   (sms, token, text, image_code_id是什么)
+        # 接收路径参数用户名和查询字符串--参数验证码id
+        uuid = request.GET.get('image_code_id')
+        image_code_cli = request.GET.get('text')
+        if not all([uuid, image_code_cli]):
+            return HttpResponseForbidden('缺少必传参数')
+        # 验证--是否有此用户
+        try:
+            user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            return JsonResponse({'message': '没有此用户'})
+        # 验证码是否正确
+        redis_conn = get_redis_connection('verify_code')
+        image_code_server = redis_conn.get('img: %s' % uuid)
+        if image_code_server is None or image_code_cli.lower() != image_code_server.decode().lower():
+            return JsonResponse({'message': '图形验证码不正确'})
+        user_info = {'mobile': user.mobile}
+        access_token = json.dumps(user_info)
+        mobile = user.mobile[0:3] + '*****' + user.mobile[-3:]
+        return JsonResponse({'mobile': mobile, 'access_token': access_token})
+
+
+class VerifyUser(View):
+    """找回密码视图三"""
+    def get(self, request):
+        """验证用户名"""
+        # 接收查询字符串参数access_token
+        access_token = request.GET.get('access_token')
+        # 验证
+        user_info = json.loads(access_token)
+        try:
+            user = User.objects.get(mobile=user_info['mobile'])
+        except User.DoesNotExist:
+            return JsonResponse({'data': '用户不存在'})
+        # 发送短信验证码
+            # 防止用户不停刷新页面重发短信， 规定短信一分钟只能发一次
+        redis_conn = get_redis_connection('verify_code')
+        pl = redis_conn.pipeline()
+        flag = redis_conn.get('get_flag: %s' % user.mobile)
+        if flag:
+            return JsonResponse({'data': '访问过于频繁'})
+
+        sms_code = '%06d' % random.randint(0, 999999)
+        # 打印出sms_code的值
+        logger.info(sms_code)
+        # 保存短信验证码的值， 便于之后的校验
+        pl.setex('sms: %s' % user.mobile, constants.SMS_CODE_REDIS_EXPIRY, sms_code)
+        # 发送验证码
+        # CCP().send_template_sms(mobile, [sms_code, constants.SMS_CODE_REDIS_EXPIRY // 60], 1)
+        pl.setex('get_flag: %s' % user.mobile, constants.SMS_CODE_REDIS_EXPIRY // 5, 1)
+        pl.execute()
+
+        ccp_send_sms_code.delay(user.mobile, sms_code)
+
+        return JsonResponse({'message': '短信发送成功'})
+
+
+class VerifySms(View):
+    """找回密码之视图3"""
+    def get(self, request, username):
+        """验证用户和短信验证码"""
+        # 接收查询字符串参数sms_code,
+        sms_code = request.GET.get('sms_code')
+        # 验证用户名和查询字符串参数
+        try:
+            user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            return JsonResponse({'data': '没有此用户'})
+        redis_conn = get_redis_connection('verify_code')
+        sms_code_server = redis_conn.get('sms: %s' % user.mobile)
+        if sms_code_server is None or sms_code != sms_code_server.decode():
+            return JsonResponse({'data': '短信验证码错误'})
+
+        user_info = {'mobile': user.mobile}
+        access_token = json.dumps(user_info)
+        return JsonResponse({'user_id': user.id, 'access_token': access_token, 'message': 'ok'})
+
+
+class ChangePassword(View):
+    """找回密码之视图4"""
+    def post(self, request, user_id):
+        """修改密码"""
+        json_dict = json.loads(request.body.decode())
+        # 请求体获取新密码和再次输入的新密码
+        new_password = json_dict.get('password')
+        new_password2 = json_dict.get('password2')
+        access_token = json_dict.get('access_token')
+
+        if not all([new_password, new_password2, access_token]):
+            return JsonResponse({'message': '缺少参数'})
+        user_info = json.loads(access_token)
+        if not user_info:
+            return JsonResponse({'message': '数据错误'})
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return JsonResponse({'data': '没有此用户'})
+        # 验证密码是否正则
+        if not re.match(r'^[a-zA-Z0-9]{8,20}$', new_password):
+            return JsonResponse({'message': '密码格式不正确'})
+        # 验证前后密码是否一致
+        if new_password2 != new_password:
+            return JsonResponse({'message': '前后密码不一致'})
+        # 修改密码
+        user.set_password(new_password)
+        user.save()
+        # 重定向到登录界面
+        return JsonResponse({'message': 'ok'})
